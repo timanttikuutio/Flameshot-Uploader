@@ -15,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -39,6 +40,7 @@ type ShareXConf struct {
 }
 
 func main() {
+	dependencyCheck()
 	confDir, _ := os.UserHomeDir()
 	confDir += "/.config/"
 
@@ -151,13 +153,7 @@ func main() {
 		part, _ := writer.CreateFormFile(config.FormName, "screenshot.png")
 
 		_, err := io.Copy(part, image)
-		if err != nil {
-			return
-		}
 		err = writer.Close()
-		if err != nil {
-			return
-		}
 
 		request, _ := http.NewRequest(strings.ToUpper(config.Method), url, body)
 		request.Header.Add("Content-Type", writer.FormDataContentType())
@@ -179,7 +175,7 @@ func main() {
 		fmt.Println(response.Status)
 		bodyBytes, _ := ioutil.ReadAll(response.Body)
 
-		fmt.Println(string(bodyBytes))
+		fmt.Println("body bytes" + string(bodyBytes))
 
 		if response.StatusCode == http.StatusOK {
 			err := xclip.WriteText(string(bodyBytes))
@@ -196,9 +192,26 @@ func loadStdin() *bufio.Reader {
 	buffer := new(bytes.Buffer)
 	_, err := buffer.ReadFrom(os.Stdin)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("load stdin err: " + err.Error())
 	}
+
 	return bufio.NewReader(buffer)
+}
+
+//func captureImg() []byte {
+//	output, err := exec.Command("flameshot", "gui", "-r").Output()
+//	if err != nil {
+//		log.Println("capture img err: " + err.Error())
+//	}
+//	return output
+//}
+
+func dependencyCheck() {
+	flameshotCheck, _ := exec.Command("flameshot", "-v").Output()
+	xclipCheck, _ := exec.Command("xclip", "-version").Output()
+
+	fmt.Println(string(flameshotCheck))
+	fmt.Println(string(xclipCheck))
 }
 
 func sendNotification(message string) {
