@@ -137,6 +137,11 @@ func main() {
 		config := loadConfig()
 		image := loadStdin()
 
+		if peek, _ := image.Peek(19); string(peek) == "screenshot aborted\n" {
+			sendNotification("Image upload aborted.")
+			os.Exit(1)
+		}
+
 		url := config.Url
 
 		if len(config.Params) != 0 {
@@ -172,10 +177,7 @@ func main() {
 			panic("")
 		}
 		defer response.Body.Close()
-		fmt.Println(response.Status)
 		bodyBytes, _ := ioutil.ReadAll(response.Body)
-
-		fmt.Println("body bytes" + string(bodyBytes))
 
 		if response.StatusCode == http.StatusOK {
 			err := xclip.WriteText(string(bodyBytes))
