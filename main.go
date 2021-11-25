@@ -46,10 +46,10 @@ func main() {
 
 	parser := argparse.NewParser("Flameshot Uploader", "Run `flameshot gui -r | flameshotuploader -u` to use this tool.")
 
-	pUpload := parser.Flag("u", "upload", &argparse.Options{
+	pUpload := parser.Selector("u", "upload", []string{"image", "video", "gif"}, &argparse.Options{
 		Required: false,
 		Validate: nil,
-		Help:     "Uploads the file from Stdin to the custom uploader.",
+		Help:     "Uploads the file from Stdin to the custom uploader. A file type of 'image', 'video', or 'gif' must be specified. Defaults to 'image'.",
 		Default:  nil,
 	})
 
@@ -68,6 +68,7 @@ func main() {
 	})
 
 	err := parser.Parse(os.Args)
+
 	if err != nil {
 	}
 
@@ -133,7 +134,7 @@ func main() {
 			config.Url, config.Method, config.FormName, params, headers)
 	}
 
-	if *pUpload == true {
+	if *pUpload != "" {
 		config := loadConfig()
 		image := loadStdin()
 
@@ -155,10 +156,22 @@ func main() {
 
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
-		part, _ := writer.CreateFormFile(config.FormName, "screenshot.png")
 
-		_, err := io.Copy(part, image)
-		err = writer.Close()
+		if *pUpload == "video" {
+			part, _ := writer.CreateFormFile(config.FormName, "video.mp4")
+			_, err = io.Copy(part, image)
+			err = writer.Close()
+		} else if *pUpload == "gif" {
+			part, _ := writer.CreateFormFile(config.FormName, "video.gif")
+			_, err = io.Copy(part, image)
+			err = writer.Close()
+		} else if *pUpload == "image" {
+			part, _ := writer.CreateFormFile(config.FormName, "screenshot.png")
+			_, err = io.Copy(part, image)
+			err = writer.Close()
+		} else {
+			sendNotification("Error: No filetype specified, aborting.")
+		}
 
 		request, _ := http.NewRequest(strings.ToUpper(config.Method), url, body)
 		request.Header.Add("Content-Type", writer.FormDataContentType())
@@ -176,7 +189,10 @@ func main() {
 			sendNotification("There was an error while connecting to the server.")
 			panic("")
 		}
-		defer response.Body.Close()
+		defer func(Body io.ReadCloser) {
+			_ = Body.Close()
+		}(response.Body)
+
 		bodyBytes, _ := ioutil.ReadAll(response.Body)
 
 		if response.StatusCode == http.StatusOK {
@@ -185,9 +201,13 @@ func main() {
 				return
 			}
 
-			sendNotification("Image uploaded successfully!")
+			sendNotification("Upload successful!")
+		} else {
+			sendNotification("An error occurred whilst uploading the content")
+			sendNotification(string(bodyBytes))
 		}
 	}
+	parser.Help(os.Args)
 }
 
 func loadStdin() *bufio.Reader {
