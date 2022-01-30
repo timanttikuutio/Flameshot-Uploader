@@ -20,11 +20,12 @@ import (
 )
 
 type Config struct {
-	Url      string            `yaml:"url"`
-	Params   map[string]string `yaml:"params"`
-	Headers  map[string]string `yaml:"headers"`
-	Method   string            `yaml:"method"`
-	FormName string            `yaml:"formname"`
+	UploadURL string            `yaml:"UploadURL"`
+	Params    map[string]string `yaml:"Params"`
+	Headers   map[string]string `yaml:"Headers"`
+	Method    string            `yaml:"Method"`
+	FormName  string            `yaml:"FormName"`
+	URLFormat string            `yaml:"URLFormat"`
 }
 
 type ShareXConf struct {
@@ -37,10 +38,12 @@ type ShareXConf struct {
 	Headers         map[string]string `json:"Headers"`
 	Body            string            `json:"Body"`
 	FileFormName    string            `json:"FileFormName"`
+	URL             string            `json:"URL"`
 }
 
 func main() {
 	dependencyCheck()
+	homeDir, _ := os.UserHomeDir()
 	confDir, _ := os.UserHomeDir()
 	confDir += "/.config/"
 
@@ -67,6 +70,13 @@ func main() {
 		Default:  nil,
 	})
 
+	pUploadYouTube := parser.String("", "ytdl", &argparse.Options{
+		Required: false,
+		Validate: nil,
+		Help:     "Upload any videos from YTDL supported sites to the uploader.",
+		Default:  nil,
+	})
+
 	err := parser.Parse(os.Args)
 
 	if err != nil {
@@ -86,11 +96,12 @@ func main() {
 			}
 
 			newConf := Config{
-				Url:      tmpConf.RequestURL,
-				Params:   tmpConf.Parameters,
-				Headers:  tmpConf.Headers,
-				Method:   tmpConf.RequestMethod,
-				FormName: tmpConf.FileFormName,
+				UploadURL: tmpConf.RequestURL,
+				Params:    tmpConf.Parameters,
+				Headers:   tmpConf.Headers,
+				Method:    tmpConf.RequestMethod,
+				FormName:  tmpConf.FileFormName,
+				URLFormat: tmpConf.URL,
 			}
 
 			marshal, err := yaml.Marshal(newConf)
@@ -131,19 +142,15 @@ func main() {
 
 		fmt.Println("Flameshot Uploader config")
 		fmt.Printf("URL: %s\nMethod: %s\nForm Name: %s\nParameters:%s\nHeaders:%s",
-			config.Url, config.Method, config.FormName, params, headers)
+			config.UploadURL, config.Method, config.FormName, params, headers)
 	}
 
-	if *pUpload != "" {
+	if *pUpload != "" || *pUploadYouTube != "" {
 		config := loadConfig()
-		image := loadStdin()
 
-		if peek, _ := image.Peek(19); string(peek) == "screenshot aborted\n" {
-			sendNotification("Image upload aborted.")
-			os.Exit(1)
-		}
+		var fileData *bufio.Reader
 
-		url := config.Url
+		url := config.UploadURL
 
 		if len(config.Params) != 0 {
 			var params []string
@@ -157,20 +164,67 @@ func main() {
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
 
-		if *pUpload == "video" {
-			part, _ := writer.CreateFormFile(config.FormName, "video.mp4")
-			_, err = io.Copy(part, image)
-			err = writer.Close()
-		} else if *pUpload == "gif" {
-			part, _ := writer.CreateFormFile(config.FormName, "video.gif")
-			_, err = io.Copy(part, image)
-			err = writer.Close()
-		} else if *pUpload == "image" {
-			part, _ := writer.CreateFormFile(config.FormName, "screenshot.png")
-			_, err = io.Copy(part, image)
-			err = writer.Close()
+		if *pUploadYouTube == "" {
+			fileData = loadStdin()
+
+			if peek, _ := fileData.Peek(19); string(peek) == "screenshot aborted\n" {
+				sendNotification("Image upload aborted.")
+				os.Exit(1)
+			}
+
+			if *pUpload == "video" {
+				part, _ := writer.CreateFormFile(config.FormName, "video.mp4")
+				_, err = io.Copy(part, fileData)
+				err = writer.Close()
+			} else if *pUpload == "gif" {
+				part, _ := writer.CreateFormFile(config.FormName, "video.gif")
+				_, err = io.Copy(part, fileData)
+				err = writer.Close()
+			} else if *pUpload == "image" {
+				part, _ := writer.CreateFormFile(config.FormName, "screenshot.png")
+				_, err = io.Copy(part, fileData)
+				err = writer.Close()
+			} else {
+				sendNotification("Error: No filetype specified, aborting.")
+			}
 		} else {
-			sendNotification("Error: No filetype specified, aborting.")
+			ytdlCmd := exec.Command("yt-dlp", *pUploadYouTube, "--quiet", "--no-playlist", "--format", "mp4", "-o", homeDir+"/temp/FPUploader-video.mp4")
+
+			stringBuilder := new(strings.Builder)
+			ytdlCmd.Stdout = stringBuilder
+
+			err = ytdlCmd.Run()
+			if err != nil {
+			}
+
+			ytFilePath := homeDir + "/temp/FPUploader-video.mp4"
+
+			if _, err := os.Stat(ytFilePath); !os.IsNotExist(err) {
+				if err != nil {
+					log.Fatal("Reading the YTDL video failed.")
+				}
+
+				readFile, err := os.ReadFile(ytFilePath)
+				if err != nil {
+				}
+
+				buffer := new(bytes.Buffer)
+				_, err = buffer.Write(readFile)
+				if err != nil && err != io.EOF {
+					log.Fatal("load stdin err: " + err.Error())
+				}
+
+				fileData = bufio.NewReader(buffer)
+
+				part, _ := writer.CreateFormFile(config.FormName, "video.mp4")
+				_, err = io.Copy(part, fileData)
+				err = writer.Close()
+
+				err = os.Remove(ytFilePath)
+				if err != nil {
+					return
+				}
+			}
 		}
 
 		request, _ := http.NewRequest(strings.ToUpper(config.Method), url, body)
@@ -253,11 +307,11 @@ func setupConfig() {
 	}
 	if _, err := os.Stat(confDir + "FSUploader.yaml"); os.IsNotExist(err) {
 		confTmp, _ := json.Marshal(Config{
-			Url:      "",
-			Params:   map[string]string{},
-			Headers:  map[string]string{},
-			Method:   "POST",
-			FormName: "img",
+			UploadURL: "",
+			Params:    map[string]string{},
+			Headers:   map[string]string{},
+			Method:    "POST",
+			FormName:  "img",
 		})
 
 		err := os.WriteFile(confDir+"FSUploader.yaml", confTmp, 0775)
