@@ -167,7 +167,7 @@ func main() {
 		if *pUploadYouTube == "" {
 			fileData = loadStdin()
 
-			if peek, _ := fileData.Peek(19); string(peek) == "screenshot aborted\n" {
+			if peek, _ := fileData.Peek(19); string(peek) == "" {
 				sendNotification("Image upload aborted.")
 				os.Exit(1)
 			}
