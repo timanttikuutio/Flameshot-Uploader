@@ -10,7 +10,6 @@ import (
 	"github.com/gen2brain/beeep"
 	"gopkg.in/yaml.v2"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -87,7 +86,7 @@ func main() {
 		if err != nil {
 
 		} else {
-			byteValue, _ := ioutil.ReadAll(file)
+			byteValue, _ := io.ReadAll(file)
 
 			var tmpConf ShareXConf
 			err := json.Unmarshal(byteValue, &tmpConf)
@@ -228,7 +227,7 @@ func main() {
 		}
 
 		request, _ := http.NewRequest(strings.ToUpper(config.Method), url, body)
-		request.Header.Add("Content-Type", writer.FormDataContentType())
+		request.Header.Add("Content-Type", "multipart/form-data")
 
 		if len(config.Headers) != 0 {
 			for k, v := range config.Headers {
@@ -247,7 +246,7 @@ func main() {
 			_ = Body.Close()
 		}(response.Body)
 
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
+		bodyBytes, _ := io.ReadAll(response.Body)
 
 		if response.StatusCode == http.StatusOK {
 			err := xclip.WriteText(string(bodyBytes))
