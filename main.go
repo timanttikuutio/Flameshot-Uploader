@@ -180,7 +180,7 @@ func main() {
 				_, err = io.Copy(part, fileData)
 				err = writer.Close()
 			} else if *pUpload == "image" {
-				part, _ := writer.CreateFormFile(config.FormName, "screenshot.png")
+				part, _ := writer.CreateFormFile(config.FormName, "@screenshot.png")
 				_, err = io.Copy(part, fileData)
 				err = writer.Close()
 			} else {
@@ -227,7 +227,7 @@ func main() {
 		}
 
 		request, _ := http.NewRequest(strings.ToUpper(config.Method), url, body)
-		request.Header.Add("Content-Type", "multipart/form-data")
+		request.Header.Add("Content-Type", writer.FormDataContentType())
 
 		if len(config.Headers) != 0 {
 			for k, v := range config.Headers {
